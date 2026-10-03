@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
+import LogoMerek from '../components/LogoMerek';
 
 export default function Masuk() {
   const { pengguna, masuk, siap } = useAuth();
@@ -44,9 +45,7 @@ export default function Masuk() {
       {/* Panel kiri: identitas sistem */}
       <div className="hidden lg:flex flex-col justify-between bg-slate-900 text-slate-300 p-10">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-gov-600 grid place-items-center text-white font-extrabold text-lg shadow-lg">
-            B
-          </div>
+          <LogoMerek className="h-11 w-auto shrink-0" />
           <div>
             <p className="text-white font-extrabold tracking-tight leading-none">BEGASAK</p>
             <p className="text-[11px] text-slate-400 mt-1">Besame Mengawasi Bina Konstruksi</p>
@@ -58,7 +57,7 @@ export default function Masuk() {
             Decision Support System Monitoring &amp; Pengawasan Jasa Konstruksi
           </h1>
           <p className="text-[13px] text-slate-400 mt-3 leading-relaxed">
-            Seluruh data master, tastyasan, dan analisis risiko hanya dapat diakses oleh pengguna yang
+            Seluruh data master, tenaga kerja, dan analisis risiko hanya dapat diakses oleh pengguna yang
             terdaftar. Hak akses mengikuti peran, dan setiap perubahan tercatat pada audit log.
           </p>
           <ul className="mt-6 space-y-2 text-[12px] text-slate-400">
@@ -84,9 +83,7 @@ export default function Masuk() {
       <div className="flex items-center justify-center p-6">
         <div className="w-full max-w-sm">
           <div className="lg:hidden flex items-center gap-3 mb-7">
-            <div className="w-10 h-10 rounded-xl bg-gov-600 grid place-items-center text-white font-extrabold">
-              B
-            </div>
+            <LogoMerek className="h-10 w-auto shrink-0" />
             <p className="font-extrabold text-slate-800">BEGASAK</p>
           </div>
 

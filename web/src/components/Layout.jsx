@@ -4,6 +4,7 @@ import { useApi, useRealtime } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { waktuRelatif, levelTone } from '../lib/utils';
 import { BadgeLevel } from './ui';
+import LogoMerek from './LogoMerek';
 import {
   IkonDashboard,
   IkonPeta,
@@ -101,9 +102,7 @@ export default function Layout() {
         >
           <div className="px-5 py-4 border-b border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gov-600 grid place-items-center text-white font-extrabold text-lg shadow-lg">
-                B
-              </div>
+              <LogoMerek className="h-11 w-auto shrink-0" />
               <div className="min-w-0">
                 <p className="text-white font-extrabold tracking-tight leading-none">BEGASAK</p>
                 <p className="text-[10px] text-slate-400 mt-1 leading-tight truncate">

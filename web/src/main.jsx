@@ -17,15 +17,14 @@ import Pengguna from './pages/Pengguna';
 import Kecamatan from './pages/Kecamatan';
 import Masuk from './pages/Masuk';
 import TidakDitemukan from './pages/TidakDitemukan';
+import LogoMerek from './components/LogoMerek';
 import './index.css';
 
 function Memuat({ children }) {
   return (
     <div className="min-h-screen grid place-items-center bg-slate-100">
       <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gov-600 grid place-items-center text-white font-extrabold">
-          B
-        </div>
+        <LogoMerek className="h-10 w-auto" />
         <p className="text-[12px] text-slate-500">Memuat BEGASAK…</p>
       </div>
     </div>
