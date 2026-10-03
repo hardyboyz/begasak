@@ -48,10 +48,10 @@ KECAMATAN = [
     {"nama": "Dendang", "lat": -3.0166, "lng": 107.8263},
     {"nama": "Gantung", "lat": -3.1331, "lng": 107.7504},
     {"nama": "Simpang Pesak", "lat": -2.6561, "lng": 107.8979},
-    {"nama": "Selatpanjang", "lat": -3.2107, "lng": 107.8732},
+    {"nama": "Simpang Renggiang", "lat": -3.2107, "lng": 107.8732},
 ]
 KEC_ALIASES = [
-    ("Selatpanjang", ["selatpanjang", "s. renggiang", "selat panjang", "renggiang"]),
+    ("Simpang Renggiang", ["simpang renggiang", "s. renggiang", "simpang renggiang", "renggiang"]),
     ("Kelapa Kampit", ["kelapa kampit", "kelapakampit", "kelapa kampang"]),
     ("Simpang Pesak", ["simpang pesak", "simpangpesak", "sp. pesak", "s. pesak"]),
     ("Damar", ["damar"]),

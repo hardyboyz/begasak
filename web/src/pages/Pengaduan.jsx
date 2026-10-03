@@ -256,7 +256,7 @@ function FormKeluhan({ tutup, selesai }) {
           <div>
             <label className="label">Kecamatan</label>
             <select className="input" value={f.kecamatan} onChange={ubah('kecamatan')}>
-              {['Manggar', 'Damar', 'Dendang', 'Kelapa Kampit', 'Selatpanjang', 'Gantung', 'Simpang Pesak'].map((k) => (
+              {['Manggar', 'Damar', 'Dendang', 'Kelapa Kampit', 'Simpang Renggiang', 'Gantung', 'Simpang Pesak'].map((k) => (
                 <option key={k}>{k}</option>
               ))}
             </select>

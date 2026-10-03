@@ -9,7 +9,7 @@ const WARNA = { Rendah: '#15803d', Sedang: '#ca8a04', Tinggi: '#ea580c', Ekstrem
  */
 const KEC = [
   {
-    nama: 'Selatpanjang',
+    nama: 'Simpang Renggiang',
     warna: '#cbd5e1',
     titik: [-3.2107, 107.8732],
     poly: [
