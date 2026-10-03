@@ -1,0 +1,31 @@
+# Dependency
+node_modules/
+
+# Build produksi (dibangun ulang lewat `npm run build`)
+web/dist/
+
+# Database SQLite — dapat dibangun ulang dengan `npm run seed`.
+# Berkas ini berisi hash kata sandi akun demo dan token sesi, jadi tidak
+# ikut di-version control.
+server/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Rahasia & konfigurasi lokal
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS & editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Log
+*.log
+npm-debug.log*

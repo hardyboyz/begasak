@@ -1,0 +1,19 @@
+{
+  "name": "begasak-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BEGASAK - Decision Support System Monitoring & Pengawasan Jasa Konstruksi",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "seed": "node src/seed.js --force",
+    "etl": "python3 ../etl/parse_bikon.py"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}
