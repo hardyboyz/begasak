@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, setMeta, audit } from './db.js';
 import { hitungUlang } from './dss/engine.js';
+import { ASPEK, hitungScoring } from './scoring/engine.js';
 import { hashKataSandi, AKUN_DEMO } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +46,56 @@ const MITIGASI = {
   'Keselamatan Lalu Lintas': 'Tambahkan rambu, police, dan pengatur lalu lintas sementara.',
 };
 
+const CATATAN_SCORING = {
+  ADMINISTRASI: [
+    'Dokumen kontrak, jadwal, dan laporan pelaksanaan tersedia lengkap.',
+    'Sebagian dokumen administrasi belum diperbarui sesuai kondisi lapangan.',
+    'Dokumen kontrak belum lengkap dan jadwal kerja belum disahkan.',
+  ],
+  KEMAJUAN_FISIK: [
+    'Progres fisik sesuai atau lebih cepat dari rencana.',
+    'Progres fisik sedikit tertinggal dari jadwal.',
+    'Progres fisik jauh tertinggal dari rencana pekerjaan.',
+  ],
+  MUTU: [
+    'Material dan hasil pekerjaan sesuai spesifikasi teknis.',
+    'Terdapat catatan mutu yang memerlukan perbaikan terarah.',
+    'Terdapat ketidaksesuaian mutu berulang dan belum diperbaiki.',
+  ],
+  WAKTU: [
+    'Pelaksanaan pekerjaan sesuai jadwal kontrak.',
+    'Terdapat potensi keterlambatan yang perlu diantisipasi.',
+    'Pekerjaan berpotensi melewati jadwal penyelesaian kontrak.',
+  ],
+  KEUANGAN: [
+    'Progres keuangan sejalan dengan progres fisik.',
+    'Terdapat selisih progres keuangan yang perlu diverifikasi.',
+    'Data progres keuangan belum lengkap atau tidak sesuai progres fisik.',
+  ],
+  KESELAMATAN: [
+    'Persyaratan keselamatan konstruksi diterapkan dengan baik.',
+    'Terdapat temuan keselamatan yang perlu segera ditindaklanjuti.',
+    'Penerapan keselamatan konstruksi belum memadai dan berisiko tinggi.',
+  ],
+  LINGKUNGAN: [
+    'Dampak lingkungan dan gangguan sekitar terkendali.',
+    'Terdapat gangguan lingkungan yang perlu ditangani.',
+    'Pengendalian lingkungan belum berjalan dan menimbulkan keluhan.',
+  ],
+  DOKUMENTASI: [
+    'Foto, laporan monitoring, dan tindak lanjut temuan terdokumentasi.',
+    'Dokumentasi lapangan belum lengkap pada beberapa kegiatan.',
+    'Dokumentasi dan tindak lanjut temuan belum tersedia.',
+  ],
+};
+
+const PETUGAS_SCORING = [
+  'Arif Setiawan, ST',
+  'Dedi Kurniawan, ST',
+  'Rizal Fahmi, ST',
+  'Siti Rahma, ST',
+];
+
 const PETA_IKK_TARGET = 83.49;
 
 function meta() {
@@ -63,6 +114,8 @@ function kosongkan() {
     'pengaduan',
     'peringatan',
     'risiko',
+    'scoring_detail',
+    'scoring',
     'temuan',
     'pengawasan',
     'penugasan',
@@ -136,6 +189,14 @@ export function seed({ force = false } = {}) {
      konsekuensi, tindakan, tenggat, tanggal_closure, pelapor)
     VALUES (@kode,@pengawasan_id,@proyek_id,@tanggal,@kategori,@deskripsi,@lokasi,@tingkat,@status,
      @konsekuensi,@tindakan,@tenggat,@tanggal_closure,@pelapor)`);
+  const insScoring = db.prepare(`INSERT INTO scoring
+    (kode, proyek_id, pengawasan_id, tanggal, petugas, nilai_akhir, kategori, kritis,
+     rekomendasi, catatan, kesimpulan, dibuat_oleh)
+    VALUES (@kode,@proyek_id,@pengawasan_id,@tanggal,@petugas,@nilai_akhir,@kategori,@kritis,
+     @rekomendasi,@catatan,@kesimpulan,'seed')`);
+  const insScoringDetail = db.prepare(`INSERT INTO scoring_detail
+    (scoring_id, aspek_kode, skor, bobot, nilai, catatan, bukti)
+    VALUES (?,?,?,?,?,?,?)`);
 
   const hari = (d) => d.toISOString().slice(0, 10);
   const H = new Date();
@@ -143,6 +204,54 @@ export function seed({ force = false } = {}) {
     const x = new Date(d);
     x.setDate(x.getDate() + n);
     return x;
+  };
+
+  /** Skor simulasi yang deterministik, dengan satu contoh persis Berita Acara. */
+  const skorUntuk = (p, i) => {
+    if (i === 0) {
+      return {
+        ADMINISTRASI: 2,
+        KEMAJUAN_FISIK: 3,
+        MUTU: 2,
+        WAKTU: 3,
+        KEUANGAN: 2,
+        KESELAMATAN: 4,
+        LINGKUNGAN: 1,
+        DOKUMENTASI: 2,
+      };
+    }
+    const progres = Number(p.progres) || 0;
+    // Profil 0–9 menghasilkan sebaran risiko Rendah sampai Sangat tinggi,
+    // bukan menumpuk di satu kategori.
+    const kelas = i % 10;
+    const dasar = kelas <= 2 ? 1.35 : kelas <= 5 ? 2.15 : kelas <= 8 ? 2.85 : 3.5;
+    const skor = {};
+    for (const a of ASPEK) {
+      let v = Math.round(dasar + (rnd() - 0.5) * 1.4);
+      if (p.status === 'Selesai') v = Math.min(v, 2);
+      skor[a.kode] = Math.max(1, Math.min(4, v));
+    }
+    if (p.status !== 'Selesai') {
+      // Progres sangat rendah memperberat aspek jadwal dan mutu.
+      if (progres < 25) {
+        skor.KEMAJUAN_FISIK = Math.max(skor.KEMAJUAN_FISIK, 3);
+        skor.WAKTU = Math.max(skor.WAKTU, 3);
+      }
+      if (rnd() < 0.12) skor.KESELAMATAN = 4;
+    }
+    return skor;
+  };
+
+  const detailUntuk = () => {
+    const detail = {};
+    for (const a of ASPEK) {
+      const pilihan = CATATAN_SCORING[a.kode] || [];
+      detail[a.kode] = {
+        catatan: pilihan[Math.floor(rnd() * pilihan.length)] || '',
+        bukti: rnd() < 0.6 ? `Foto/laporan ${a.nama.toLowerCase()} terlampir` : '',
+      };
+    }
+    return detail;
   };
 
   // Rasio penugasan = IKK/KKTC. Kebutuhan total 418, TKK bersertifikat 349 -> assign 349 (83,49%).
@@ -322,6 +431,54 @@ export function seed({ force = false } = {}) {
     }
   });
 
+  // Penilaian scoring awal. Sebagian proyek sengaja dibiarkan belum dinilai
+  // agar dashboard dan peta dapat menampilkan kondisi "Belum dinilai".
+  const proyekTersimpan = db
+    .prepare('SELECT id, kode, nama, status, progres, tanggal_mulai FROM proyek ORDER BY id')
+    .all();
+  let jumlahScoring = 0;
+  const txScoring = db.transaction(() => {
+    for (let i = 0; i < proyekTersimpan.length; i++) {
+      const p = proyekTersimpan[i];
+      if ((i + 1) % 9 === 0) continue;
+      if (p.status === 'Belum Mulai' && i % 3 !== 0) continue;
+
+      const hasil = hitungScoring(skorUntuk(p, i), detailUntuk());
+      const peng = db
+        .prepare('SELECT id, tanggal FROM pengawasan WHERE proyek_id=? ORDER BY tanggal DESC LIMIT 1')
+        .get(p.id);
+      const tanggal = peng?.tanggal || hari(new Date());
+      const kode = `SCR-${tanggal.replace(/-/g, '')}-${String(i + 1).padStart(3, '0')}`;
+      const r = insScoring.run({
+        kode,
+        proyek_id: p.id,
+        pengawasan_id: peng?.id || null,
+        tanggal,
+        petugas: pilih(PETUGAS_SCORING),
+        nilai_akhir: hasil.nilai_akhir,
+        kategori: hasil.kategori,
+        kritis: hasil.kritis,
+        rekomendasi: hasil.rekomendasi,
+        catatan: 'Penilaian simulasi berdasarkan data pengawasan lapangan.',
+        kesimpulan: hasil.rekomendasi,
+      });
+      const scoringId = r.lastInsertRowid;
+      for (const d of hasil.detail) {
+        insScoringDetail.run(
+          scoringId,
+          d.kode,
+          d.skor,
+          d.bobot,
+          d.nilai,
+          d.catatan || null,
+          d.bukti || null
+        );
+      }
+      jumlahScoring++;
+    }
+  });
+  txScoring();
+
   // Pengguna demo (6 akun, 5 peran) dengan kata sandi awal.
   // Ganti seluruh kata sandi ini sebelum penggunaan produksi.
   const insUser = db.prepare(
@@ -377,8 +534,12 @@ export function seed({ force = false } = {}) {
     `  Penugasan: ${sudahAssign} TKK ditugaskan dari ${totalKebutuhan} kebutuhan ` +
       `(CKR ${((sudahAssign / totalKebutuhan) * 100).toFixed(2)}%, target ${PETA_IKK_TARGET}%), gap ${belum}`
   );
-  console.log(`  Risiko  : ${r.proyek} proyek dinilai, ${r.peringatan} peringatan dibangkitkan`);
-  return { skipped: false, ...r };
+  console.log(
+    `  Scoring : ${jumlahScoring} penilaian untuk ${r.dinilai} proyek, ` +
+      `${r.belum_dinilai} proyek belum dinilai`
+  );
+  console.log(`  Risiko  : ${r.proyek} proyek diproses, ${r.peringatan} peringatan dibangkitkan`);
+  return { skipped: false, scoring: jumlahScoring, ...r };
 }
 
 function pick_keluhan() {

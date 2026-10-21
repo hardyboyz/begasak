@@ -1,5 +1,6 @@
 import { db, audit } from '../db.js';
-import { skorProyek, angka, peringatanProyek } from './engine.js';
+import { skorProyek, peringatanProyek } from './engine.js';
+import { sinkronRisiko } from '../scoring/integrasi.js';
 
 let _s = 20251001;
 const rnd = () => {
@@ -83,7 +84,7 @@ export function tickSitus() {
   }
 
   // Temuan dengan probabilitas risiko
-  const peluang = Math.min(0.75, 0.12 + s.skor / 160);
+  const peluang = Math.min(0.75, 0.12 + Number(s.skor || 0) / 160);
   let temuanBaru = null;
   if (rnd() < peluang) {
     const t = pilih(TEMPLATE_TEMUAN);
@@ -114,26 +115,9 @@ export function tickSitus() {
     temuanBaru = db.prepare('SELECT * FROM temuan WHERE id=?').get(idT);
   }
 
-  // Perbarui skor risiko proyek
+  // Risiko bersumber dari scoring; simulator hanya menyegarkan cache.
+  sinkronRisiko(proyek.id);
   const sBaru = skorProyek(db.prepare('SELECT * FROM proyek WHERE id=?').get(proyek.id));
-  db.prepare(
-    `UPDATE risiko SET probabilitas=?, dampak=?, skor=?, level=?, deskripsi=?, mitigasi=? WHERE kode=?`
-  ).run(
-    Math.max(1, Math.min(5, Math.ceil(sBaru.skor / 20))),
-    Math.max(1, Math.min(5, Math.ceil(angka(proyek.pagu) / 5e8))),
-    Math.max(1, Math.min(5, Math.ceil(sBaru.skor / 20))) *
-      Math.max(1, Math.min(5, Math.ceil(angka(proyek.pagu) / 5e8))),
-    sBaru.level,
-    sBaru.detail
-      .filter((x) => x.nilai >= 40)
-      .map((x) => `${x.label}: ${x.catatan}`)
-      .join(' | ') || 'Seluruh indikator risiko berada dalam batas wajar.',
-    sBaru.detail
-      .filter((x) => x.nilai >= 50)
-      .map((x) => x.label)
-      .join('; ') || 'Pemantauan rutin',
-    `RSK-${proyek.kode}`
-  );
 
   audit('monitoring', 'supervisi-harian', 'proyek', proyek.id, { skor: sBaru.skor });
   const peringatanBaru = peringatanProyek(proyek.id);
@@ -146,7 +130,13 @@ export function tickSitus() {
       progres: Math.min(100, proyek.progres + delta),
     },
     temuan: temuanBaru,
-    risiko: { kode: proyek.kode, level: sBaru.level, skor: sBaru.skor, aksi: sBaru.aksi },
+    risiko: {
+      kode: proyek.kode,
+      level: sBaru.level,
+      skor: sBaru.skor,
+      aksi: sBaru.aksi,
+      dinilai: sBaru.dinilai,
+    },
     peringatan: peringatanBaru,
     waktu: new Date().toISOString(),
   };

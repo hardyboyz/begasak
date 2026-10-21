@@ -74,7 +74,7 @@ export function GrafikBatang({
   tinggi = 260,
   kunci = 'nilai',
   label = 'label',
-  warna = '#1447e1',
+  warna = '#fed104',
   horizontal = false,
   formatterY,
   formatterTooltip,
@@ -105,7 +105,7 @@ export function GrafikBatang({
           {tumpuk ? (
             <Bar dataKey={kunci} radius={[5, 5, 0, 0]} stackId="a">
               {data2.map((d, i) => (
-                <Cell key={i} fill={warna || d.color || '#1447e1'} />
+                <Cell key={i} fill={warna || d.color || '#fed104'} />
               ))}
             </Bar>
           ) : (
@@ -149,7 +149,7 @@ export function GrafikGaris({ data, tinggi = 240, linhas = [], formatterY }) {
   );
 }
 
-export function GrafikArea({ data, tinggi = 200, kunci = 'nilai', label = 'label', warna = '#1447e1', formatterY }) {
+export function GrafikArea({ data, tinggi = 200, kunci = 'nilai', label = 'label', warna = '#fed104', formatterY }) {
   const id = `grad-${kunci}`;
   return (
     <div style={{ height: tinggi }}>

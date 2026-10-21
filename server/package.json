@@ -9,7 +9,8 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "seed": "node src/seed.js --force",
-    "etl": "python3 ../etl/parse_bikon.py"
+    "etl": "python3 ../etl/parse_bikon.py",
+    "test:scoring": "node --test src/scoring/engine.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

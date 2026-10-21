@@ -49,7 +49,7 @@ export default function Pengaduan() {
             key={s || 'semua'}
             onClick={() => setStatus(s)}
             className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition ${
-              status === s ? 'bg-gov-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              status === s ? 'bg-gov-700 text-slate-900' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
             {s || 'Semua'}

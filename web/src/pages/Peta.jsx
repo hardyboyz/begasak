@@ -5,7 +5,7 @@ import PetaSkematis from '../components/PetaSkematis';
 import { useApi } from '../lib/api';
 import { rupiahFmt } from '../lib/utils';
 
-const LEVELS = ['Semua', 'Ekstrem', 'Tinggi', 'Sedang', 'Rendah'];
+const LEVELS = ['Semua', 'Sangat tinggi', 'Tinggi', 'Sedang', 'Rendah', 'Belum dinilai'];
 
 export default function Peta() {
   const [params, setParams] = useSearchParams();
@@ -22,11 +22,13 @@ export default function Peta() {
   };
 
   const titikTersaring = (data?.titik || []).filter(
-    (t) => (kec === 'Semua' || t.kecamatan === kec) && (level === 'Semua' || t.level === level)
+    (t) =>
+      (kec === 'Semua' || t.kecamatan === kec) &&
+      (level === 'Semua' || (t.level || 'Belum dinilai') === level)
   );
   const ringkasan = data?.ringkasan || [];
   const totalPagukan = ringkasan.reduce((a, b) => a + (b.pagu || 0), 0);
-  const totalBerisiko = ringkasan.reduce((a, b) => a + (b.ekstrem || 0) + (b.tinggi || 0), 0);
+  const totalBerisiko = ringkasan.reduce((a, b) => a + (b.sangat_tinggi || 0) + (b.tinggi || 0), 0);
 
   if (loading && !data) return <Memuat />;
   if (!data) return <Kosong pesan="Gagal memuat data peta" />;
@@ -78,7 +80,7 @@ export default function Peta() {
           tone="slate"
         />
         <Statistik
-          label="Proyek berisiko tinggi/ekstrem"
+          label="Proyek berisiko tinggi/sangat tinggi"
           nilai={totalBerisiko}
           satuan="proyek"
           sub="Perlu intervensi segera"
@@ -100,12 +102,12 @@ export default function Peta() {
             sub="Klik polygon untuk memfilter; titik mewakili proyek"
             aksi={
               <div className="flex gap-1">
-                {['Semua', 'Tinggi', 'Ekstrem'].map((l) => (
+                {['Semua', 'Tinggi', 'Sangat tinggi'].map((l) => (
                   <button
                     key={l}
                     onClick={() => set('level', l === 'Semua' ? null : l)}
                     className={`px-2 py-1 rounded text-[11px] font-semibold transition ${
-                      level === l ? 'bg-gov-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      level === l ? 'bg-gov-700 text-slate-900' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
                     {l}
@@ -127,10 +129,10 @@ export default function Peta() {
 
         <div className="space-y-4">
           <Kartu>
-            <KartuJudul judul="Profil Kecamatan" sub="Jumlah & nilai工程项目 per wilayah" />
+            <KartuJudul judul="Profil Kecamatan" sub="Jumlah & nilai proyek per wilayah" />
             <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
               {data.ringkasan.map((r) => {
-                const total = r.ekstrem + r.tinggi + r.sedang + r.rendah || 1;
+                const total = r.sangat_tinggi + r.tinggi + r.sedang + r.rendah + (r.belum_dinilai || 0) || 1;
                 return (
                   <div
                     key={r.kecamatan}
@@ -147,7 +149,7 @@ export default function Peta() {
                       {r.jumlah_proyek} proyek · {r.berjalan} berjalan · progres {r.progres}%
                     </p>
                     <div className="flex h-2 mt-2 rounded-full overflow-hidden bg-slate-100">
-                      {['ekstrem', 'tinggi', 'sedang', 'rendah'].map((k) => {
+                      {['sangat_tinggi', 'tinggi', 'sedang', 'rendah', 'belum_dinilai'].map((k) => {
                         const v = r[k] || 0;
                         if (!v) return null;
                         return (
@@ -155,7 +157,7 @@ export default function Peta() {
                             key={k}
                             style={{
                               width: `${(v / total) * 100}%`,
-                              background: { ekstrem: '#b91c1c', tinggi: '#ea580c', sedang: '#ca8a04', rendah: '#15803d' }[k],
+                              background: { sangat_tinggi: '#b91c1c', tinggi: '#ea580c', sedang: '#ca8a04', rendah: '#15803d', belum_dinilai: '#94a3b8' }[k],
                             }}
                             title={`${k}: ${v}`}
                           />
@@ -163,10 +165,11 @@ export default function Peta() {
                       })}
                     </div>
                     <div className="flex gap-2 mt-1.5 text-[10px]">
-                      {r.ekstrem > 0 && <span className="text-red-600 font-semibold">{r.ekstrem} ekstrem</span>}
+                      {r.sangat_tinggi > 0 && <span className="text-red-600 font-semibold">{r.sangat_tinggi} sangat tinggi</span>}
                       {r.tinggi > 0 && <span className="text-orange-600 font-semibold">{r.tinggi} tinggi</span>}
                       {r.sedang > 0 && <span className="text-amber-600 font-semibold">{r.sedang} sedang</span>}
                       {r.rendah > 0 && <span className="text-emerald-600 font-semibold">{r.rendah} rendah</span>}
+                      {r.belum_dinilai > 0 && <span className="text-slate-500 font-semibold">{r.belum_dinilai} belum dinilai</span>}
                     </div>
                   </div>
                 );
@@ -239,9 +242,9 @@ export default function Peta() {
                       <span className="text-slate-300">0</span>
                     )}
                   </td>
-                  <td className="text-center text-[12px] font-bold tabular-nums">{t.skor_risiko || '-'}</td>
+                  <td className="text-center text-[12px] font-bold tabular-nums">{t.skor_risiko == null ? '-' : Number(t.skor_risiko).toFixed(2).replace('.', ',')}</td>
                   <td>
-                    <BadgeLevel level={t.level} size="xs" />
+                    <BadgeLevel level={t.level || 'Belum dinilai'} size="xs" />
                   </td>
                 </tr>
               ))}

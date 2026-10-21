@@ -10,10 +10,10 @@ Satuan Kerja: **DPURPK Kabupaten Belitung Timur**, Provinsi Kepulauan Bangka Bel
 
 | Komponen | Keterangan |
 | --- | --- |
-| Data | 164 proyek, 349 tenaga kerja bersertifikat, 90 penyedia jasa |
+| Data | 164 proyek, 146 penilaian scoring, 349 tenaga kerja bersertifikat, 90 penyedia jasa |
 | IKK/KKTC | 83,49% (target 83,49%), gap 69 tenaga kerja |
 | Nilai pagu | Rp 47.443.226.079,58 |
-| Metode DSS | Skor 7 indikator berbobot + 13 aturan EW proyek + 4 EW agregat |
+| Metode DSS | Scoring risiko 8 aspek berbobot (0–100) + 14 aturan EW proyek + 4 EW agregat |
 | Pemetaan | 7 kecamatan, titik koordinat pusat |
 | Realtime | Server-Sent Events (`/api/stream`) dengan simulator tick 12 detik |
 | Autentikasi | Sesi Bearer di tabel `sesi`, Berlaku 12 jam, 5 peran dengan RBAC per-izin |
@@ -34,12 +34,12 @@ Password untuk semua akun demo: `admin123`, `ppk123`, `awas123`, `mitra123`, `ia
 
 | Username | Peran | Cakupan |
 | --- | --- | --- |
-| `admin` | Administrator | Seluruh modul, termasuk Manajemen Pengguna (29 izin) |
-| `pengguna.ppk` | Perangkat Daerah | Supervisi dan pengawasan lapangan (25 izin) |
+| `admin` | Administrator | Seluruh modul, termasuk Manajemen Pengguna |
+| `pengguna.ppk` | Perangkat Daerah | Supervisi, pengawasan lapangan, dan scoring |
 | `pengguna.pengawas` | Perangkat Daerah | Field supervisor, cakupan lebih sempit |
-| `cv.mitra` | Penyedia Jasa | Proyek, tenaga kerja, dan penyedia (12 izin) |
-| `institut` | Asosiasi Profesi | Rekap industri dan pengaduan asosiasi (9 izin) |
-| `masyarakat` | Masyarakat | Dashboard, proyek, pengaduan (5 izin) |
+| `cv.mitra` | Penyedia Jasa | Proyek, tenaga kerja, penyedia, dan scoring (baca) |
+| `institut` | Asosiasi Profesi | Rekap industri, scoring (baca), dan pengaduan asosiasi |
+| `masyarakat` | Masyarakat | Dashboard, proyek, scoring (baca), pengaduan |
 
 Panel "Akun Demo" pada halaman `/masuk` hanya muncul saat `NODE_ENV` bukan `production`.
 
@@ -85,18 +85,21 @@ Hasil ETL disimpan di `server/seed/bikon2025.json`, lalu diimpor oleh `npm run s
 | `/` | Dashboard monitoring: IKK, anggaran, risiko, peringatan | Semua |
 | `/masuk` | Halaman masuk | Publik |
 | `/pengguna` | Manajemen akun, peran, dan status aktif | Administrator |
-| `/peta` | Peta skematis risiko per kecamatan | Perangkat Daerah |
-| `/proyek` | Data proyek, filter, detail indikator | Semua |
+| `/peta` | Peta skematis risiko per kecamatan | Perangkat Daerah, Asosiasi |
+| `/proyek` | Data proyek, filter, detail aspek scoring | Semua |
 | `/tenaga-kerja` | 349 TKK, analisis kesenjangan kualifikasi | Perangkat Daerah, Penyedia, Asosiasi |
 | `/penyedia` | 90 penyedia jasa, skor kemampuan | Perangkat Daerah, Asosiasi |
 | `/pengawasan` | Catatan supervisi dan temuan lapangan | Perangkat Daerah, Penyedia |
-| `/risiko` | Matriks probabilitas × dampak | Perangkat Daerah, Asosiasi |
+| `/scoring` | Penilaian risiko 8 aspek, riwayat, dan rekomendasi | Semua (tulis: Administrator/PD) |
+| `/risiko` | Daftar proyek menurut tingkat risiko scoring | Perangkat Daerah, Asosiasi, Penyedia |
 | `/peringatan` | Early warning system | Perangkat Daerah |
 | `/pengaduan` | Pengaduan masyarakat | Perangkat Daerah, Masyarakat |
 | `/laporan` | Ringkasan eksekutif + unduh CSV | Semua |
 
 Menu, tombol, dan rute menyesuaikan izin peran aktif. Halaman di luar akses menampilkan
 pesan pembatasan, dan permintaan API ditolak `403` oleh guard `wajibIzin`.
+
+Flowchart dan UML aplikasi tersedia di [`docs/DIAGRAM.md`](docs/DIAGRAM.md).
 
 ## Autentikasi & RBAC
 
@@ -107,8 +110,10 @@ pesan pembatasan, dan permintaan API ditolak `403` oleh guard `wajibIzin`.
 - `Administrator` aktif terakhir tidak dapat dinonaktifkan, dihapus, atau diturunkan perannya.
 
 Izin yang tersedia: `dashboard`, `peta`, `proyek`, `tenaga`, `penyedia`, `pengawasan`,
-`risiko`, `peringatan`, `pengaduan`, `laporan`, `pengguna`, `audit`, `sistem` — masing-masing
-dengan aksi `read`, `create`, `update`, `delete`.
+`scoring`, `risiko`, `peringatan`, `pengaduan`, `kecamatan`, `laporan`, `pengguna`, `audit`,
+`sistem` — masing-masing dengan aksi `read`, `create`, `update`, `delete` sesuai peran.
+Hanya Administrator dan Perangkat Daerah yang dapat menulis penilaian scoring; peran lain
+memiliki akses baca.
 
 Route publik: `GET /api/health`, `POST /api/auth/masuk`, `GET /api/auth/akun-demo`.
 Seluruh `/api/*` lainnya memerlukan sesi valid.
@@ -119,27 +124,45 @@ header: `GET /api/stream?token=<token>`.
 Endpoint unduh CSV juga memerlukan header Authorization, sehingga antarmuka mengambil
 berkas sebagai Blob (`unduh()` di `web/src/lib/api.js`) alih-alih tautan `<a href>`.
 
-## Model Risiko
+## Model Risiko (Scoring 8 Aspek)
 
-Bobot indikator:
+Risiko proyek dihitung dari penilaian terbaru pada halaman `/scoring`. Setiap aspek diberi
+skor **1–4**, lalu kontribusinya dihitung dengan:
 
-| Indikator | Bobot |
+```text
+nilai_aspek = ((skor - 1) / 3) x bobot
+nilai_akhir = jumlah seluruh nilai_aspek
+```
+
+Nilai akhir dibulatkan ke 2 desimal. Bobot aspek:
+
+| Aspek | Bobot |
 | --- | --- |
-| Ketersediaan tenaga bersertifikat | 22% |
-| Metode pengadaan | 8% |
-| Kapasitas penyedia | 12% |
-| Deviasi progres | 20% |
-| Temuan pengawasan | 20% |
-| Keselamatan kerja (K3) | 12% |
-| Frekuensi supervisi | 6% |
+| Administrasi | 10% |
+| Kemajuan fisik | 20% |
+| Mutu | 20% |
+| Waktu | 15% |
+| Keuangan | 10% |
+| Keselamatan konstruksi | 10% |
+| Lingkungan | 5% |
+| Dokumentasi | 10% |
 
-Tingkat: Rendah < 25 · Sedang 25–49 · Tinggi 50–74 · Ekstrem ≥ 75.
+Klasifikasi: **Rendah** 0–25 · **Sedang** >25–50 · **Tinggi** >50–75 ·
+**Sangat tinggi** >75–100.
 
-Aturan early warning proyek: EW-01 s.d. EW-13. Aturan agregat: EW-A1 s.d. EW-A4.
+Aturan khusus: skor aspek keselamatan konstruksi **4** selalu menandai penilaian sebagai
+**K3 kritis** dan wajib ditindaklanjuti segera, berapa pun nilai akhirnya. Proyek tanpa
+penilaian ditampilkan sebagai **Belum dinilai** dan tidak dianggap berisiko nol.
+
+Tabel `risiko` tetap menjadi cache untuk Dashboard, Peta, Laporan, dan Proyek. Cache
+disinkronkan setiap kali penilaian dibuat, diubah, atau dihapus.
+
+Aturan early warning proyek: EW-01 s.d. EW-14. Aturan agregat: EW-A1 s.d. EW-A4.
+Peringatan dini tetap memakai `hitungIndikator` dan tidak bergantung pada skor risiko lama.
 
 ## Realtime (SSE)
 
-`GET /api/stream` enjoyment event berikut:
+`GET /api/stream` mengirim event berikut:
 
 | Event | Isi payload |
 | --- | --- |
@@ -162,6 +185,7 @@ GET /api/laporan/ekspor?format=csv&data=tenaga
 GET /api/laporan/ekspor?format=csv&data=penyedia
 GET /api/laporan/ekspor?format=csv&data=temuan
 GET /api/laporan/ekspor?format=csv&data=pengawasan
+GET /api/laporan/ekspor?format=csv&data=scoring
 GET /api/laporan/ekspor?format=csv&data=peringatan
 ```
 

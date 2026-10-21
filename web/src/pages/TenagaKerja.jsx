@@ -59,6 +59,13 @@ export default function TenagaKerja() {
     { nama: 'jabatan_kerja', label: 'Jabatan kerja', tipe: 'select', opsi: opsi.jabatan || [] },
     { nama: 'jenis_pelatihan', label: 'Jenis pelatihan' },
     { nama: 'klasifikasi', label: 'Klasifikasi' },
+    {
+      nama: 'status_bpjs',
+      label: 'Status BPJS',
+      tipe: 'select',
+      opsi: ['Belum', 'Lunas'],
+      hint: 'Status kepesertaan BPJS tenaga kerja.',
+    },
     { nama: 'perusahaan_id', label: 'ID perusahaan penyedia', tipe: 'number', bintang: true, min: 0 },
     { nama: 'aktif', label: 'Aktif', tipe: 'checkbox', hint: 'Tenaga nonaktif tidak dapat dipilih untuk penugasan baru.' },
   ];
@@ -71,7 +78,7 @@ export default function TenagaKerja() {
   const totalHal = Math.ceil((data?.total || 0) / per);
 
   const komposisi = [
-    { label: 'Operator', nilai: tkk.operator || 0, warna: '#1447e1' },
+    { label: 'Operator', nilai: tkk.operator || 0, warna: '#fed104' },
     { label: 'Teknisi/Analis', nilai: tkk.teknisi_analis || 0, warna: '#7c3aed' },
   ];
 
@@ -236,7 +243,7 @@ export default function TenagaKerja() {
                 onClick={() => setPenerbit(penerbit === (l.penerbit || l.nama) ? '' : l.penerbit || l.nama)}
                 className={`px-2 py-0.5 rounded text-[11px] font-medium border ${
                   penerbit === (l.penerbit || l.nama)
-                    ? 'bg-gov-700 text-white border-gov-700'
+                    ? 'bg-gov-700 text-slate-900 border-gov-700'
                     : 'bg-white border-slate-200 text-slate-600 hover:border-gov-300'
                 }`}
               >
@@ -281,6 +288,7 @@ export default function TenagaKerja() {
                     <th>Sertifikat</th>
                     <th>Penerbit</th>
                     <th>Jabatan</th>
+                    <th>BPJS</th>
                     <th className="text-center">Ditugaskan</th>
                     <th className="text-right">Aksi</th>
                   </tr>
@@ -308,6 +316,11 @@ export default function TenagaKerja() {
                       <td className="text-[11.5px] text-slate-600 max-w-[150px]">
                         <span className="line-clamp-1">{t.jabatan_kerja || '-'}</span>
                       </td>
+                      <td>
+                        <Chip tone={t.status_bpjs === 'Lunas' ? 'emerald' : 'amber'}>
+                          {t.status_bpjs || 'Belum'}
+                        </Chip>
+                      </td>
                       <td className="text-center">
                         {t.proyek_aktif > 0 ? (
                           <Chip tone="emerald">{t.proyek_aktif}</Chip>
@@ -333,7 +346,7 @@ export default function TenagaKerja() {
                   ))}
                   {data?.items.length === 0 && (
                     <tr>
-                      <td colSpan={8}>
+                      <td colSpan={9}>
                         <Kosong pesan="Tidak ada tenaga yang cocok" />
                       </td>
                     </tr>
@@ -401,7 +414,7 @@ export default function TenagaKerja() {
         nilaiAwal={
           sunting
             ? Object.fromEntries(FIELDS.map((f) => [f.nama, sunting[f.nama] ?? '']))
-            : { aktif: 1, tahun_sertifikat: '' }
+            : { aktif: 1, tahun_sertifikat: '', status_bpjs: 'Belum' }
         }
         onSimpan={async (nilai) => {
           if (mode === 'ubah') {

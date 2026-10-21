@@ -46,6 +46,14 @@ export function IkonPengawasan({ className = 'w-5 h-5' }) {
   );
 }
 
+export function IkonScoring({ className = 'w-5 h-5' }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75l2.25 2.25L15 9m-3-6.75h.75A2.25 2.25 0 0115 4.5v.75h1.5A2.25 2.25 0 0118.75 7.5v12A2.25 2.25 0 0116.5 21.75h-9A2.25 2.25 0 015.25 19.5v-12A2.25 2.25 0 017.5 5.25H9V4.5a2.25 2.25 0 012.25-2.25H12z" />
+    </svg>
+  );
+}
+
 export function IkonPeringatan({ className = 'w-5 h-5' }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">

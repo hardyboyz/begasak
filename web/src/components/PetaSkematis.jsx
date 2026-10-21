@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const WARNA = { Rendah: '#15803d', Sedang: '#ca8a04', Tinggi: '#ea580c', Ekstrem: '#b91c1c' };
+const WARNA = { Rendah: '#15803d', Sedang: '#ca8a04', Tinggi: '#ea580c', 'Sangat tinggi': '#b91c1c', Ekstrem: '#b91c1c', 'Belum dinilai': '#94a3b8' };
 
 /**
  * Peta skematis Kabupaten Belitung Timur.
@@ -123,7 +123,7 @@ export default function PetaSkematis({ringkasan = [], titik = [], onKlik, aktifK
     }
     const s = stat[nama];
     if (!s) return '#e2e8f0';
-    const b = (s.ekstrem || 0) * 3 + (s.tinggi || 0) * 2 + (s.sedang || 0);
+    const b = (s.sangat_tinggi || s.ekstrem || 0) * 3 + (s.tinggi || 0) * 2 + (s.sedang || 0);
     if (b === 0) return '#e2e8f0';
     const r = b / (s.jumlah_proyek || 1);
     if (r > 0.6) return '#fca5a5';
@@ -134,7 +134,7 @@ export default function PetaSkematis({ringkasan = [], titik = [], onKlik, aktifK
 
   const titikFilter = titik.filter((t) => {
     if (aktifKec && aktifKec !== 'Semua' && t.kecamatan !== aktifKec) return false;
-    if (filterLevel && filterLevel !== 'Semua' && t.level !== filterLevel) return false;
+    if (filterLevel && filterLevel !== 'Semua' && (t.level || 'Belum dinilai') !== filterLevel) return false;
     return true;
   });
 
@@ -172,7 +172,7 @@ export default function PetaSkematis({ringkasan = [], titik = [], onKlik, aktifK
               <polygon
                 points={pts}
                 fill={warnaKec(k.nama)}
-                stroke={isAktif ? '#1c5cf5' : '#64748b'}
+                stroke={isAktif ? '#fed104' : '#64748b'}
                 strokeWidth={isAktif ? 3 : 1}
                 opacity={hover && hover !== k.nama ? 0.6 : 1}
                 style={{ transition: 'all .2s' }}
@@ -183,9 +183,9 @@ export default function PetaSkematis({ringkasan = [], titik = [], onKlik, aktifK
               <text x={cx} y={cy + 7} textAnchor="middle" fontSize={10} fill="#475569">
                 {s ? `${s.jumlah_proyek} proyek` : '0'}
               </text>
-              {s && s.ekstrem + s.tinggi > 0 && (
+              {s && (s.sangat_tinggi || s.ekstrem || 0) + s.tinggi > 0 && (
                 <text x={cx} y={cy + 21} textAnchor="middle" fontSize={9.5} fill="#c2410c" fontWeight={700}>
-                  {s.ekstrem + s.tinggi} berisiko
+                  {(s.sangat_tinggi || s.ekstrem || 0) + s.tinggi} berisiko
                 </text>
               )}
             </g>
@@ -196,10 +196,10 @@ export default function PetaSkematis({ringkasan = [], titik = [], onKlik, aktifK
         {titikFilter.map((t, i) => {
           const [x, y] = proyeksi(t.latitude, t.longitude);
           const c = WARNA[t.level] || '#94a3b8';
-          const r = t.level === 'Ekstrem' ? 5 : t.level === 'Tinggi' ? 4.2 : 3.2;
+          const r = t.level === 'Sangat tinggi' || t.level === 'Ekstrem' ? 5 : t.level === 'Tinggi' ? 4.2 : 3.2;
           return (
             <g key={i} className="cursor-pointer" onClick={() => onKlik?.(t.kode, 'proyek')}>
-              {t.level === 'Ekstrem' && (
+              {(t.level === 'Sangat tinggi' || t.level === 'Ekstrem') && (
                 <circle cx={x} cy={y} r={r + 4} fill={c} opacity={0.25} className="denyut" />
               )}
               <circle cx={x} cy={y} r={r} fill={c} fillOpacity={0.85} stroke="#fff" strokeWidth={1} />

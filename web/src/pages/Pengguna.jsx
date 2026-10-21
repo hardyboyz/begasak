@@ -16,7 +16,7 @@ const WARNA = {
 
 const WARNA_BULAN = {
   Administrator: 'bg-slate-700',
-  'Perangkat Daerah': 'bg-gov-700',
+  'Perangkat Daerah': 'bg-gov-900',
   'Penyedia Jasa': 'bg-emerald-600',
   'Asosiasi Profesi': 'bg-violet-600',
   Masyarakat: 'bg-slate-600',

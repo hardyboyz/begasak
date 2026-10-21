@@ -2,18 +2,22 @@ export const LEVEL = {
   Rendah: { bg: 'bg-emerald-50', teks: 'text-emerald-700', titik: '#15803d', chip: '#d1fae5' },
   Sedang: { bg: 'bg-amber-50', teks: 'text-amber-700', titik: '#ca8a04', chip: '#fef3c7' },
   Tinggi: { bg: 'bg-orange-50', teks: 'text-orange-700', titik: '#ea580c', chip: '#ffedd5' },
+  'Sangat tinggi': { bg: 'bg-red-50', teks: 'text-red-700', titik: '#b91c1c', chip: '#fee2e2' },
   Ekstrem: { bg: 'bg-red-50', teks: 'text-red-700', titik: '#b91c1c', chip: '#fee2e2' },
+  'Belum dinilai': { bg: 'bg-slate-100', teks: 'text-slate-600', titik: '#64748b', chip: '#e2e8f0' },
 };
 
 export const WARNA_RISIKO = {
   Rendah: '#15803d',
   Sedang: '#ca8a04',
   Tinggi: '#ea580c',
+  'Sangat tinggi': '#b91c1c',
   Ekstrem: '#b91c1c',
+  'Belum dinilai': '#64748b',
 };
 
 export function levelTone(level) {
-  return LEVEL[level] || LEVEL.Rendah;
+  return LEVEL[level] || LEVEL['Belum dinilai'];
 }
 
 const rupiah = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });

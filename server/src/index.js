@@ -17,6 +17,20 @@ import {
   ATURAN_AGGREGAT,
 } from './dss/engine.js';
 import { tickSitus } from './dss/monitor.js';
+import {
+  ambilScoring,
+  ambilScoringTerbaru,
+  ringkasanRisiko,
+  ringkasanScoring,
+  sinkronRisiko,
+} from './scoring/integrasi.js';
+import { ASPEK as ASPEK_SCORING, KLASIFIKASI as KLASIFIKASI_SCORING } from './scoring/engine.js';
+import {
+  buatScoring,
+  ubahScoring,
+  hapusScoring,
+  daftarScoring,
+} from './scoring/repositori.js';
 import { mulaiSSE, idkirim } from './realtime.js';
 import {
   masuk,
@@ -48,6 +62,17 @@ app.use(express.json({ limit: '5mb' }));
 if (db.prepare('SELECT COUNT(*) n FROM proyek').get().n === 0) {
   console.log('Database kosong, menjalankan seed otomatis...');
   seed({ force: true });
+}
+
+// Cache risiko selalu diturunkan dari scoring terbaru saat server mulai.
+try {
+  const sinkron = sinkronRisiko();
+  console.log(
+    `Sinkronisasi risiko: ${sinkron.dinilai}/${sinkron.proyek} proyek dinilai, ` +
+      `${sinkron.belum_dinilai} belum dinilai.`
+  );
+} catch (e) {
+  console.error('Gagal sinkronisasi risiko awal:', e.message);
 }
 
 // ================================ HELPER
@@ -179,7 +204,9 @@ app.get('/api/dashboard', wajibIzin('dashboard:read'), (_req, res) => {
     `SELECT p.kecamatan, COUNT(*) proyek, ROUND(AVG(p.progres),1) progres_rata,
             SUM(p.pagu) pagu, SUM(CASE WHEN p.status='Berjalan' THEN 1 ELSE 0 END) berjalan,
             (SELECT COUNT(*) FROM risiko r JOIN proyek x ON x.id=r.proyek_id
-              WHERE x.kecamatan=p.kecamatan AND r.level IN ('Tinggi','Ekstrem')) berisiko
+              WHERE x.kecamatan=p.kecamatan AND r.level IN ('Tinggi','Sangat tinggi','Ekstrem')) berisiko,
+            (SELECT COUNT(*) FROM proyek x WHERE x.kecamatan=p.kecamatan
+              AND NOT EXISTS (SELECT 1 FROM risiko r2 WHERE r2.proyek_id=x.id)) belum_dinilai
      FROM proyek p GROUP BY p.kecamatan ORDER BY pagu DESC`
   );
   const statusProyek = q('SELECT status, COUNT(*) n, SUM(pagu) pagu FROM proyek GROUP BY status');
@@ -242,8 +269,12 @@ app.get('/api/proyek', wajibIzin('proyek:read'), (req, res) => {
     params.push(req.query.jenis);
   }
   if (req.query.level) {
-    where.push('r.level = ?');
-    params.push(req.query.level);
+    if (req.query.level === 'Sangat tinggi' || req.query.level === 'Ekstrem') {
+      where.push("r.level IN ('Sangat tinggi','Ekstrem')");
+    } else {
+      where.push('r.level = ?');
+      params.push(req.query.level);
+    }
   }
   if (req.query.sumber) {
     where.push('p.sumber_pendanaan = ?');
@@ -530,7 +561,7 @@ app.get('/api/tenaga-kerja', wajibIzin('tenaga:read'), (req, res) => {
 const KOLOM_TENAGA = [
   'nama', 'jenis_pelatihan', 'klasifikasi', 'kualifikasi', 'no_sertifikat', 'penerbit',
   'jabatan_kerja', 'jenjang', 'jenjang_angka', 'bersertifikat', 'tahun_sertifikat',
-  'perusahaan_id', 'aktif',
+  'perusahaan_id', 'aktif', 'status_bpjs',
 ];
 
 function bersihkanTenaga(b, lama = {}) {
@@ -550,6 +581,7 @@ function bersihkanTenaga(b, lama = {}) {
     tahun_sertifikat: n(ambil('tahun_sertifikat', 0)) || null,
     perusahaan_id: n(ambil('perusahaan_id', 0)) || null,
     aktif: ambil('aktif', 1) ? 1 : 0,
+    status_bpjs: String(ambil('status_bpjs', 'Belum') || 'Belum') === 'Lunas' ? 'Lunas' : 'Belum',
   };
 }
 
@@ -570,9 +602,9 @@ app.post('/api/tenaga-kerja', wajibIzin('tenaga:create'), (req, res) => {
       .prepare(
         `INSERT INTO tenaga_kerja (kode, nama, jenis_pelatihan, klasifikasi, kualifikasi,
           no_sertifikat, penerbit, jabatan_kerja, jenjang, jenjang_angka, bersertifikat,
-          tahun_sertifikat, perusahaan_id, aktif)
+          tahun_sertifikat, perusahaan_id, aktif, status_bpjs)
          VALUES (@kode,@nama,@jenis_pelatihan,@klasifikasi,@kualifikasi,@no_sertifikat,@penerbit,
-          @jabatan_kerja,@jenjang,@jenjang_angka,@bersertifikat,@tahun_sertifikat,@perusahaan_id,@aktif)`
+          @jabatan_kerja,@jenjang,@jenjang_angka,@bersertifikat,@tahun_sertifikat,@perusahaan_id,@aktif,@status_bpjs)`
       )
       .run({ ...d, kode });
     audit(namaAksi(req), 'buat', 'tenaga_kerja', r.lastInsertRowid, { kode, nama: d.nama });
@@ -604,7 +636,7 @@ app.patch('/api/tenaga-kerja/:id', wajibIzin('tenaga:update'), (req, res) => {
         kualifikasi=@kualifikasi, no_sertifikat=@no_sertifikat, penerbit=@penerbit,
         jabatan_kerja=@jabatan_kerja, jenjang=@jenjang, jenjang_angka=@jenjang_angka,
         bersertifikat=@bersertifikat, tahun_sertifikat=@tahun_sertifikat, perusahaan_id=@perusahaan_id,
-        aktif=@aktif WHERE id=@id`
+        aktif=@aktif, status_bpjs=@status_bpjs WHERE id=@id`
     ).run({ ...d, id: t.id });
     audit(namaAksi(req), 'ubah', 'tenaga_kerja', t.id, req.body);
     res.json({ ok: true, tenaga: g('SELECT * FROM tenaga_kerja WHERE id=?', t.id) });
@@ -916,14 +948,128 @@ app.patch('/api/temuan/:id', wajibIzin('pengawasan:update'), (req, res) => {
   res.json({ ok: true, temuan: g('SELECT * FROM temuan WHERE id=?', t.id) });
 });
 
+// ================================ SCORING
+app.get('/api/scoring/meta', wajibIzin('scoring:read'), (_req, res) => {
+  res.json({
+    aspek: ASPEK_SCORING,
+    klasifikasi: KLASIFIKASI_SCORING,
+    skala: [1, 2, 3, 4],
+    total_bobot: ASPEK_SCORING.reduce((a, x) => a + x.bobot, 0),
+    formula_aspek: 'nilai_aspek = ((skor - 1) / 3) x bobot',
+    formula_akhir: 'nilai_akhir = jumlah nilai_aspek',
+    catatan_kritis:
+      'Skor 4 pada aspek keselamatan konstruksi wajib ditindaklanjuti segera tanpa menunggu nilai akhir.',
+  });
+});
+
+app.get('/api/scoring/ringkasan', wajibIzin('scoring:read'), (_req, res) => {
+  res.json(ringkasanScoring());
+});
+
+app.get('/api/scoring/proyek/:proyekId', wajibIzin('scoring:read'), (req, res) => {
+  const proyek = g('SELECT id, kode, nama FROM proyek WHERE id=?', req.params.proyekId);
+  if (!proyek) return res.status(404).json({ pesan: 'Proyek tidak ditemukan' });
+  const { limit, offset } = paging(req);
+  const daftar = daftarScoring({ proyek_id: proyek.id, limit, offset });
+  res.json({
+    proyek,
+    terbaru: ambilScoringTerbaru(proyek.id),
+    ...daftar,
+  });
+});
+
+app.get('/api/scoring', wajibIzin('scoring:read'), (req, res) => {
+  const { limit, offset } = paging(req);
+  const hasil = daftarScoring({
+    limit,
+    offset,
+    proyek_id: req.query.proyek_id,
+    kategori: req.query.kategori,
+    kecamatan: req.query.kecamatan,
+    q: req.query.q,
+    dari: req.query.dari,
+    sampai: req.query.sampai,
+  });
+  res.json({ ...hasil, limit, offset });
+});
+
+app.get('/api/scoring/:id', wajibIzin('scoring:read'), (req, res) => {
+  const scoring = ambilScoring(Number(req.params.id));
+  if (!scoring) return res.status(404).json({ pesan: 'Penilaian scoring tidak ditemukan' });
+  const proyek = g(
+    'SELECT id, kode, nama, kecamatan FROM proyek WHERE id=?',
+    scoring.proyek_id
+  );
+  res.json({ scoring: { ...scoring, proyek } });
+});
+
+app.post('/api/scoring', wajibIzin('scoring:create'), (req, res) => {
+  try {
+    const scoring = buatScoring(req.body, namaAksi(req));
+    audit(namaAksi(req), 'buat', 'scoring', scoring.id, {
+      kode: scoring.kode,
+      proyek_id: scoring.proyek_id,
+      nilai_akhir: scoring.nilai_akhir,
+      kategori: scoring.kategori,
+      kritis: scoring.kritis,
+    });
+    const r = hitungUlang({ denganPeringatan: true });
+    idkirim('scoring-baru', scoring);
+    idkirim('hitung-ulang', { sumber: 'scoring', aksi: 'buat', ...r });
+    res.status(201).json({ ok: true, scoring });
+  } catch (e) {
+    res.status(e.status || 500).json({ pesan: e.message });
+  }
+});
+
+app.patch('/api/scoring/:id', wajibIzin('scoring:update'), (req, res) => {
+  try {
+    const scoring = ubahScoring(req.params.id, req.body, namaAksi(req));
+    audit(namaAksi(req), 'ubah', 'scoring', scoring.id, {
+      kode: scoring.kode,
+      proyek_id: scoring.proyek_id,
+      nilai_akhir: scoring.nilai_akhir,
+      kategori: scoring.kategori,
+      kritis: scoring.kritis,
+    });
+    const r = hitungUlang({ denganPeringatan: true });
+    idkirim('scoring-baru', scoring);
+    idkirim('hitung-ulang', { sumber: 'scoring', aksi: 'ubah', ...r });
+    res.json({ ok: true, scoring });
+  } catch (e) {
+    res.status(e.status || 500).json({ pesan: e.message });
+  }
+});
+
+app.delete('/api/scoring/:id', wajibIzin('scoring:delete'), (req, res) => {
+  try {
+    const lama = hapusScoring(req.params.id);
+    audit(namaAksi(req), 'hapus', 'scoring', lama.id, {
+      kode: lama.kode,
+      proyek_id: lama.proyek_id,
+      nilai_akhir: lama.nilai_akhir,
+    });
+    const r = hitungUlang({ denganPeringatan: true });
+    idkirim('scoring-dihapus', { id: lama.id, kode: lama.kode });
+    idkirim('hitung-ulang', { sumber: 'scoring', aksi: 'hapus', ...r });
+    res.json({ ok: true, kode: lama.kode, ...r });
+  } catch (e) {
+    res.status(e.status || 500).json({ pesan: e.message });
+  }
+});
+
 // ================================ RISIKO & PERINGATAN
 app.get('/api/risiko', wajibIzin('risiko:read'), (req, res) => {
   const { limit, offset } = paging(req);
   const where = [];
   const params = [];
   if (req.query.level) {
-    where.push('r.level = ?');
-    params.push(req.query.level);
+    if (req.query.level === 'Sangat tinggi' || req.query.level === 'Ekstrem') {
+      where.push("r.level IN ('Sangat tinggi','Ekstrem')");
+    } else {
+      where.push('r.level = ?');
+      params.push(req.query.level);
+    }
   }
   if (req.query.kecamatan) {
     where.push('p.kecamatan = ?');
@@ -939,15 +1085,14 @@ app.get('/api/risiko', wajibIzin('risiko:read'), (req, res) => {
     items: q(
       `SELECT r.*, p.kode AS proyek_kode, p.nama AS proyek_nama, p.kecamatan, p.pagu, p.progres, p.status
        FROM risiko r JOIN proyek p ON p.id=r.proyek_id ${w}
-       ORDER BY CASE r.level WHEN 'Ekstrem' THEN 4 WHEN 'Tinggi' THEN 3 WHEN 'Sedang' THEN 2 ELSE 1 END DESC,
+       ORDER BY CASE r.level WHEN 'Sangat tinggi' THEN 4 WHEN 'Ekstrem' THEN 4
+                             WHEN 'Tinggi' THEN 3 WHEN 'Sedang' THEN 2 ELSE 1 END DESC,
                 r.skor DESC LIMIT ? OFFSET ?`,
       ...params,
       limit,
       offset
     ),
-    matriks: q(
-      'SELECT probabilitas, dampak, COUNT(*) n FROM risiko GROUP BY probabilitas, dampak'
-    ),
+    ringkasan: ringkasanRisiko(),
   });
 });
 
@@ -1013,16 +1158,22 @@ app.get('/api/peta', wajibIzin('peta:read'), (_req, res) => {
     `SELECT p.kecamatan, k.lat, k.lng,
             COUNT(*) jumlah_proyek, SUM(p.pagu) pagu,
             SUM(CASE WHEN p.status='Berjalan' THEN 1 ELSE 0 END) berjalan,
-            SUM(CASE WHEN r.level='Ekstrem' THEN 1 ELSE 0 END) ekstrem,
+            SUM(CASE WHEN r.level IN ('Sangat tinggi','Ekstrem') THEN 1 ELSE 0 END) sangat_tinggi,
+            SUM(CASE WHEN r.level IN ('Sangat tinggi','Ekstrem') THEN 1 ELSE 0 END) ekstrem,
             SUM(CASE WHEN r.level='Tinggi' THEN 1 ELSE 0 END) tinggi,
             SUM(CASE WHEN r.level='Sedang' THEN 1 ELSE 0 END) sedang,
             SUM(CASE WHEN r.level='Rendah' THEN 1 ELSE 0 END) rendah,
+            SUM(CASE WHEN r.level IS NULL THEN 1 ELSE 0 END) belum_dinilai,
             ROUND(AVG(p.progres),1) progres
      FROM proyek p LEFT JOIN risiko r ON r.proyek_id=p.id
      LEFT JOIN kecamatan k ON k.nama=p.kecamatan
      GROUP BY p.kecamatan`
   );
-  res.json({ titik, ringkasan, zona: ['Rendah', 'Sedang', 'Tinggi', 'Ekstrem'] });
+  res.json({
+    titik,
+    ringkasan,
+    zona: ['Rendah', 'Sedang', 'Tinggi', 'Sangat tinggi'],
+  });
 });
 
 // ================================ LAPORAN
@@ -1055,6 +1206,7 @@ generated_pada: new Date().toISOString(),
     penyedia: m.penyedia,
     pengawasan: m.pengawasan,
     risiko: m.risiko,
+    scoring: ringkasanScoring(),
     peringatan: per,
     kesimpulan: buildKesimpulan(m, per),
   });
@@ -1062,7 +1214,7 @@ generated_pada: new Date().toISOString(),
 
 function buildKesimpulan(m, per) {
   const c = [];
-  const totalBerisiko = m.risiko.Tinggi + m.risiko.Ekstrem;
+  const totalBerisiko = (m.risiko.Tinggi || 0) + (m.risiko['Sangat tinggi'] || 0);
   c.push(
     `Terdapat ${m.proyek.total} proyek konstruksi dengan total pagu Rp ${Math.round(
       m.anggaran.pagu_total
@@ -1074,7 +1226,8 @@ function buildKesimpulan(m, per) {
       `Tersisa kesenjangan ${m.gap.total} orang (operator ${m.gap.operator}, teknisi/analis ${m.gap.teknisi_analis}).`
   );
   c.push(
-    `${totalBerisiko} proyek berada pada level risiko Tinggi/Ekstrem dan ${per.total} peringatan dini aktif, ` +
+    `${totalBerisiko} proyek berada pada level risiko Tinggi/Sangat tinggi, ` +
+      `${m.risiko['Belum dinilai'] || 0} proyek belum dinilai, dan ${per.total} peringatan dini aktif, ` +
       `terutama ${per.perAturan.slice(0, 3).map((a) => a.judul).join(', ')}.`
   );
   if (m.penyedia.tanpa_sbu > 0) {
@@ -1123,6 +1276,22 @@ const EKSPOR = {
           FROM pengawasan s LEFT JOIN proyek p ON p.id=s.proyek_id
           ORDER BY s.tanggal DESC`,
   },
+  scoring: {
+    file: 'begasak-scoring',
+    sql: `SELECT s.kode,s.tanggal,s.petugas,s.nilai_akhir,s.kategori,s.kritis,s.rekomendasi,
+                 s.catatan,s.kesimpulan,p.kode AS proyek_kode,p.nama AS proyek_nama,p.kecamatan
+          FROM scoring s JOIN proyek p ON p.id=s.proyek_id
+          ORDER BY s.tanggal DESC, s.id DESC`,
+  },
+  scoring_detail: {
+    file: 'begasak-scoring-detail',
+    sql: `SELECT s.kode AS scoring_kode,s.tanggal,p.kode AS proyek_kode,p.nama AS proyek_nama,
+                 d.aspek_kode,d.skor,d.bobot,d.nilai,d.catatan,d.bukti
+          FROM scoring_detail d
+          JOIN scoring s ON s.id=d.scoring_id
+          JOIN proyek p ON p.id=s.proyek_id
+          ORDER BY s.tanggal DESC, s.id DESC, d.aspek_kode`,
+  },
   peringatan: {
     file: 'begasak-peringatan-dini',
     sql: `SELECT kode,waktu,level,kategori,indikator,judul,pesan,kecamatan,sumber,dibaca,ditindaklanjuti
@@ -1165,6 +1334,8 @@ app.get('/api/laporan/ekspor', wajibIzin('laporan:ekspor'), (req, res) => {
     tenaga: q('SELECT * FROM tenaga_kerja ORDER BY kode'),
     penyedia: q('SELECT * FROM penyedia_jasa ORDER BY nama'),
     temuan: q('SELECT * FROM temuan ORDER BY tanggal DESC'),
+    scoring: q('SELECT * FROM scoring ORDER BY tanggal DESC, id DESC'),
+    scoring_detail: q('SELECT * FROM scoring_detail ORDER BY scoring_id, aspek_kode'),
     peringatan: q('SELECT * FROM peringatan ORDER BY waktu DESC'),
   });
 });

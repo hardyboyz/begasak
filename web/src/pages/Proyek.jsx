@@ -176,7 +176,7 @@ export default function Proyek() {
           <div>
             <label className="label">Level risiko</label>
             <select className="input" value={level} onChange={(e) => setLevel(e.target.value)}>
-              {['Semua', 'Ekstrem', 'Tinggi', 'Sedang', 'Rendah'].map((s) => (
+              {['Semua', 'Sangat tinggi', 'Tinggi', 'Sedang', 'Rendah'].map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </select>
@@ -272,7 +272,7 @@ export default function Proyek() {
                       <p className="text-[10px] text-slate-400 mt-0.5">{p.status}</p>
                     </td>
                     <td className="text-center">
-                      {p.level ? <BadgeLevel level={p.level} size="xs" /> : <span className="text-slate-300">-</span>}
+                      <BadgeLevel level={p.level || 'Belum dinilai'} size="xs" />
                       {p.temuan_terbuka > 0 && (
                         <p className="text-[10px] text-red-600 font-semibold mt-0.5">
                           {p.temuan_terbuka} temuan
@@ -378,6 +378,7 @@ export default function Proyek() {
 }
 
 function ModalProyek({ kode, tutup }) {
+  const { boleh } = useAuth();
   const { data, loading, reload } = useApi(`/api/proyek/${kode}`);
   if (loading && !data)
     return (
@@ -389,7 +390,10 @@ function ModalProyek({ kode, tutup }) {
 
   const p = data.proyek;
   const t = levelTone(data.level);
-  const radar = data.detail.map((d) => ({ label: d.kode, nilai: d.nilai }));
+  const radar = data.detail.map((d) => ({
+    label: d.kode.replaceAll('_', ' '),
+    nilai: Number(d.skor) * 25,
+  }));
 
   return (
     <Modal
@@ -428,7 +432,10 @@ function ModalProyek({ kode, tutup }) {
             Skor risiko
           </p>
           <p className="text-base font-extrabold" style={{ color: t.titik }}>
-            {data.skor}/100 · {data.level}
+            {data.dinilai ? `${Number(data.skor).toFixed(2).replace('.', ',')}/100` : 'Belum dinilai'}
+          </p>
+          <p className="text-[10.5px] font-semibold" style={{ color: t.titik }}>
+            {data.level}
           </p>
         </div>
       </div>
@@ -437,27 +444,44 @@ function ModalProyek({ kode, tutup }) {
         <div className="lg:col-span-2 space-y-5">
           {/* INDIKATOR */}
           <div>
-            <h4 className="text-[13px] font-bold text-slate-800 mb-2">Rincian Indikator Risiko</h4>
-            <div className="space-y-2">
-              {data.detail.map((d) => (
-                <div key={d.kode} className="flex items-start gap-3">
-                  <span className="w-24 text-[11px] font-semibold text-slate-500 pt-1 shrink-0">{d.label}</span>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between text-[11px] mb-0.5">
-                      <span className="text-slate-600">{d.catatan}</span>
-                      <span className="font-bold tabular-nums" style={{ color: d.nilai > 60 ? '#b91c1c' : d.nilai > 35 ? '#ca8a04' : '#15803d' }}>
-                        {d.nilai}
+            <h4 className="text-[13px] font-bold text-slate-800 mb-2">Rincian Aspek Scoring</h4>
+            {data.detail.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-300 p-4 text-center">
+                <p className="text-[12px] text-slate-500">Proyek ini belum memiliki penilaian scoring.</p>
+                {boleh('scoring:create') && (
+                  <Link to="/scoring" className="mt-2 inline-block text-[11.5px] font-semibold text-gov-700 hover:underline">
+                    Buat penilaian baru →
+                  </Link>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {data.detail.map((d) => {
+                  const warna =
+                    d.skor >= 4 ? '#b91c1c' : d.skor >= 3 ? '#ea580c' : d.skor >= 2 ? '#ca8a04' : '#15803d';
+                  const persenAspek = d.bobot ? (d.nilai / d.bobot) * 100 : 0;
+                  return (
+                    <div key={d.kode} className="flex items-start gap-3">
+                      <span className="w-24 text-[11px] font-semibold text-slate-500 pt-1 shrink-0">
+                        {d.nama}
                       </span>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between text-[11px] mb-0.5">
+                          <span className="text-slate-600">
+                            Skor {d.skor} · {d.nilai} dari {d.bobot} poin
+                          </span>
+                          <span className="font-bold tabular-nums" style={{ color: warna }}>
+                            {d.skor}/4
+                          </span>
+                        </div>
+                        <ProgressBar nilai={persenAspek} tinggi={6} warna={warna} />
+                        {d.catatan && <p className="text-[10.5px] text-slate-500 mt-0.5">{d.catatan}</p>}
+                      </div>
                     </div>
-                    <ProgressBar
-                      nilai={d.nilai}
-                      tinggi={6}
-                      warna={d.nilai > 60 ? '#b91c1c' : d.nilai > 35 ? '#ca8a04' : '#15803d'}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
             <p className="mt-3 text-[11px] text-slate-500 bg-slate-50 rounded-lg p-2.5">
               <span className="font-semibold">Rekomendasi DSS:</span> {data.aksi}
               {data.risiko?.mitigasi && data.risiko.mitigasi !== 'Pemantauan rutin' && (
@@ -466,6 +490,11 @@ function ModalProyek({ kode, tutup }) {
                   <br />
                   <span className="font-semibold">Mitigasi:</span> {data.risiko.mitigasi}
                 </>
+              )}
+              {data.scoring?.kritis === 1 && (
+                <span className="block mt-1 font-semibold text-red-600">
+                  Skor keselamatan konstruksi 4: tindak lanjut segera tanpa menunggu nilai akhir.
+                </span>
               )}
             </p>
           </div>
@@ -519,7 +548,7 @@ function ModalProyek({ kode, tutup }) {
             <Baris label="Rencana selesai" nilai={tanggalPendek(p.tanggal_rencana_selesai)} />
             <Baris label="Status" nilai={p.status} />
             <Baris label="Kebutuhan" nilai={`${p.jumlah_tenaga} org (${p.operator} op + ${p.teknisi_analis} T/A)`} />
-            <Baris label="Supervisi" nilai={`${data.indikator.jumlah_penghawasan} catatan`} />
+            <Baris label="Supervisi" nilai={`${data.indikator.jumlah_pengawasan} catatan`} />
           </div>
 
           {data.penyedia && (

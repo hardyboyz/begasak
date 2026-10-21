@@ -101,7 +101,7 @@ export function Memuat({ baris = 5 }) {
   );
 }
 
-export function ProgressBar({ nilai, warna = '#1447e1', tinggi = 8 }) {
+export function ProgressBar({ nilai, warna = '#fed104', tinggi = 8 }) {
   return (
     <div className="w-full bg-slate-200 rounded-full overflow-hidden" style={{ height: tinggi }}>
       <div

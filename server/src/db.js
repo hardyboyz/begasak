@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS tenaga_kerja (
   tahun_sertifikat INTEGER,
   perusahaan_id INTEGER REFERENCES penyedia_jasa(id) ON DELETE SET NULL,
   aktif INTEGER DEFAULT 1,
+  status_bpjs TEXT DEFAULT 'Belum',
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -163,6 +164,36 @@ CREATE TABLE IF NOT EXISTS risiko (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS scoring (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kode TEXT UNIQUE NOT NULL,
+  proyek_id INTEGER NOT NULL REFERENCES proyek(id) ON DELETE CASCADE,
+  pengawasan_id INTEGER REFERENCES pengawasan(id) ON DELETE SET NULL,
+  tanggal TEXT NOT NULL,
+  petugas TEXT,
+  nilai_akhir REAL DEFAULT 0,
+  kategori TEXT DEFAULT 'Rendah',
+  kritis INTEGER DEFAULT 0,
+  rekomendasi TEXT,
+  catatan TEXT,
+  kesimpulan TEXT,
+  dibuat_oleh TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS scoring_detail (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  scoring_id INTEGER NOT NULL REFERENCES scoring(id) ON DELETE CASCADE,
+  aspek_kode TEXT NOT NULL,
+  skor INTEGER NOT NULL CHECK (skor BETWEEN 1 AND 4),
+  bobot REAL NOT NULL,
+  nilai REAL NOT NULL,
+  catatan TEXT,
+  bukti TEXT,
+  UNIQUE(scoring_id, aspek_kode)
+);
+
 CREATE TABLE IF NOT EXISTS peringatan (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   kode TEXT UNIQUE NOT NULL,
@@ -242,6 +273,9 @@ CREATE INDEX IF NOT EXISTS idx_risiko_proyek ON risiko(proyek_id);
 CREATE INDEX IF NOT EXISTS idx_pengaduan_status ON pengaduan(status);
 CREATE INDEX IF NOT EXISTS idx_sesi_pengguna ON sesi(pengguna_id);
 CREATE INDEX IF NOT EXISTS idx_audit_entitas ON audit_log(entitas, entitas_id);
+CREATE INDEX IF NOT EXISTS idx_scoring_proyek ON scoring(proyek_id, tanggal DESC);
+CREATE INDEX IF NOT EXISTS idx_scoring_tanggal ON scoring(tanggal DESC);
+CREATE INDEX IF NOT EXISTS idx_scoring_detail ON scoring_detail(scoring_id);
 `);
 
 // Migrasi ringan untuk database yang sudah ada sebelum kolom password_hash ditambahkan.
@@ -258,6 +292,16 @@ try {
   }
 } catch (err) {
   console.error('Migrasi skema pengguna gagal:', err.message);
+}
+
+// Migrasi status kepesertaan BPJS tenaga kerja untuk database lama.
+try {
+  const kolomTenaga = db.prepare('PRAGMA table_info(tenaga_kerja)').all().map((c) => c.name);
+  if (!kolomTenaga.includes('status_bpjs')) {
+    db.exec("ALTER TABLE tenaga_kerja ADD COLUMN status_bpjs TEXT DEFAULT 'Belum'");
+  }
+} catch (err) {
+  console.error('Migrasi skema tenaga kerja gagal:', err.message);
 }
 
 export function setMeta(kunci, nilai) {

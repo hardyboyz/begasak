@@ -9,6 +9,7 @@ import Proyek from './pages/Proyek';
 import TenagaKerja from './pages/TenagaKerja';
 import Penyedia from './pages/Penyedia';
 import Pengawasan from './pages/Pengawasan';
+import Scoring from './pages/Scoring';
 import Risiko from './pages/Risiko';
 import Peringatan from './pages/Peringatan';
 import Pengaduan from './pages/Pengaduan';
@@ -78,6 +79,7 @@ const rute = [
   { path: '/tenaga-kerja', butuh: 'tenaga:read', el: <TenagaKerja /> },
   { path: '/penyedia', butuh: 'penyedia:read', el: <Penyedia /> },
   { path: '/pengawasan', butuh: 'pengawasan:read', el: <Pengawasan /> },
+  { path: '/scoring', butuh: 'scoring:read', el: <Scoring /> },
   { path: '/risiko', butuh: 'risiko:read', el: <Risiko /> },
   { path: '/peringatan', butuh: 'peringatan:read', el: <Peringatan /> },
   { path: '/pengaduan', butuh: 'pengaduan:read', el: <Pengaduan /> },

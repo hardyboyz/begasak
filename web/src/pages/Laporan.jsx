@@ -12,6 +12,7 @@ const DASHBOARD = [
   { key: 'penyedia', label: 'Penyedia Jasa' },
   { key: 'temuan', label: 'Temuan Supervisi' },
   { key: 'pengawasan', label: 'Catatan Supervisi' },
+  { key: 'scoring', label: 'Penilaian Scoring' },
   { key: 'peringatan', label: 'Peringatan Dini' },
 ];
 
@@ -92,9 +93,9 @@ export default function Laporan() {
             <p className="text-[10.5px] text-slate-400 mt-0.5">gap {ikk.selisih} tenaga kerja</p>
           </div>
           <div>
-            <p className="text-[11px] text-slate-500">Proyek Berisiko Tinggi/Ekstrem</p>
+            <p className="text-[11px] text-slate-500">Proyek Berisiko Tinggi/Sangat Tinggi</p>
             <p className="text-2xl font-extrabold text-orange-600 tabular-nums">
-              {(data.risiko?.Tinggi || 0) + (data.risiko?.Ekstrem || 0)}
+              {(data.risiko?.Tinggi || 0) + (data.risiko?.["Sangat tinggi"] || 0)}
             </p>
             <p className="text-[10.5px] text-slate-400 mt-0.5">dari {pj.total || 0} proyek</p>
           </div>
@@ -128,12 +129,20 @@ export default function Laporan() {
             centerLabel={`${pj.total || 0}`}
             centerSub="proyek"
             data={[
-              { label: 'Ekstrem', nilai: data.risiko?.Ekstrem || 0, warna: '#b91c1c' },
-              { label: 'Tinggi', nilai: data.risiko?.Tinggi || 0, warna: '#ea580c' },
-              { label: 'Sedang', nilai: data.risiko?.Sedang || 0, warna: '#ca8a04' },
-              { label: 'Rendah', nilai: data.risiko?.Rendah || 0, warna: '#15803d' },
+              { name: 'Sangat tinggi', value: data.risiko?.['Sangat tinggi'] || 0, color: '#b91c1c' },
+              { name: 'Tinggi', value: data.risiko?.Tinggi || 0, color: '#ea580c' },
+              { name: 'Sedang', value: data.risiko?.Sedang || 0, color: '#ca8a04' },
+              { name: 'Rendah', value: data.risiko?.Rendah || 0, color: '#15803d' },
+              { name: 'Belum dinilai', value: data.risiko?.['Belum dinilai'] || 0, color: '#64748b' },
             ]}
           />
+          <p className="text-[10.5px] text-slate-500 mt-2">
+            {data.scoring?.total || 0} penilaian · rata-rata{' '}
+            <b className="text-slate-700">{Number(data.scoring?.rata_rata || 0).toFixed(2).replace('.', ',')}</b>
+            {data.scoring?.kritis > 0 && (
+              <span className="text-red-600 font-semibold"> · {data.scoring.kritis} K3 kritis</span>
+            )}
+          </p>
         </Kartu>
       </div>
 
@@ -224,7 +233,7 @@ export default function Laporan() {
         <div className="p-4 space-y-2">
           {(data.kesimpulan || []).map((k, i) => (
             <div key={i} className="flex gap-3 p-3 rounded-lg bg-slate-50">
-              <span className="w-5 h-5 rounded-full bg-gov-700 text-white text-[10px] font-bold grid place-items-center shrink-0 mt-0.5">
+              <span className="w-5 h-5 rounded-full bg-gov-700 text-slate-900 text-[10px] font-bold grid place-items-center shrink-0 mt-0.5">
                 {i + 1}
               </span>
               <p className="text-[12.5px] text-slate-700 leading-relaxed">{k}</p>

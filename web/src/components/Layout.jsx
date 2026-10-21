@@ -12,6 +12,7 @@ import {
   IkonTenaga,
   IkonPenyedia,
   IkonPengawasan,
+  IkonScoring,
   IkonPeringatan,
   IkonLaporan,
   IkonMasyarakat,
@@ -27,8 +28,8 @@ import {
  * ditentukan oleh server dan dibaca lewat `useAuth().boleh()`.
  */
 export const WARNA_PERAN = {
-  Administrator: { warna: 'bg-gov-700' },
-  'Perangkat Daerah': { warna: 'bg-gov-700' },
+  Administrator: { warna: 'bg-gov-900' },
+  'Perangkat Daerah': { warna: 'bg-gov-900' },
   'Penyedia Jasa': { warna: 'bg-emerald-600' },
   'Asosiasi Profesi': { warna: 'bg-violet-600' },
   Masyarakat: { warna: 'bg-slate-600' },
@@ -41,6 +42,7 @@ const MENU = [
   { to: '/tenaga-kerja', label: 'Tenaga Kerja', ikon: IkonTenaga, butuh: 'tenaga:read' },
   { to: '/penyedia', label: 'Penyedia Jasa', ikon: IkonPenyedia, butuh: 'penyedia:read' },
   { to: '/pengawasan', label: 'Pengawasan & Temuan', ikon: IkonPengawasan, butuh: 'pengawasan:read' },
+  { to: '/scoring', label: 'Penilaian Scoring', ikon: IkonScoring, butuh: 'scoring:read' },
   { to: '/risiko', label: 'Analisis Risiko', ikon: IkonPeringatan, butuh: 'risiko:read' },
   { to: '/peringatan', label: 'Early Warning', ikon: IkonLive, butuh: 'peringatan:read', sorot: true },
   { to: '/pengaduan', label: 'Pengaduan Masyarakat', ikon: IkonKomplain, butuh: 'pengaduan:read' },
@@ -121,7 +123,7 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition ${
                     isActive
-                      ? 'bg-gov-600 text-white shadow-sm'
+                      ? 'bg-gov-700 text-slate-900 shadow-sm'
                       : 'hover:bg-slate-800 hover:text-white text-slate-400'
                   }`
                 }

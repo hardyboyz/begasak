@@ -1,4 +1,6 @@
 import { db, audit } from '../db.js';
+import { ambilScoringTerbaru, ringkasanRisiko, sinkronRisiko } from '../scoring/integrasi.js';
+import { klasifikasi as klasifikasiScoring } from '../scoring/engine.js';
 
 // ============================================================ UTILITAS
 export const angka = (v) => {
@@ -16,21 +18,9 @@ export const hariAntara = (a, b) => {
 
 export const hariIni = () => new Date().toISOString().slice(0, 10);
 
-export const BOBOT = {
-  KETENAGA: 0.22,
-  METODE: 0.08,
-  KAPASITAS: 0.12,
-  PROGRES: 0.2,
-  TEMUAN: 0.2,
-  K3: 0.12,
-  PENGAWASAN: 0.06,
-};
-
 export function levelDariSkor(skor) {
-  if (skor >= 75) return { level: 'Ekstrem', warna: '#b91c1c', aksi: 'Tindakan Koreksi Mendesak' };
-  if (skor >= 50) return { level: 'Tinggi', warna: '#ea580c', aksi: 'Tindakan Koreksi Dipercepat' };
-  if (skor >= 25) return { level: 'Sedang', warna: '#ca8a04', aksi: 'Perhatian & Pemantauan' };
-  return { level: 'Rendah', warna: '#15803d', aksi: 'Pemantauan Routin' };
+  const k = klasifikasiScoring(skor);
+  return { level: k.kategori, warna: k.warna, aksi: k.rekomendasi };
 }
 
 // ============================================================ INDIKATOR PROYEK
@@ -109,91 +99,53 @@ function hitungIndikator(proyek) {
 }
 
 // ============================================================ SKOR RISIKO
+/** Risiko kapasitas penyedia dipertahankan untuk aturan early warning. */
+export function kapasitasPenyedia(proyek, ind = hitungIndikator(proyek)) {
+  if (!ind.penyedia) return { nilai: 55, catatan: 'Penyedia jasa belum ditugaskan' };
+  const kap = Math.max(1, angka(ind.penyedia.skor_kemampuan));
+  const miliar = angka(proyek.pagu) / 1e9;
+  const syaratMin = miliar >= 3 ? 4 : miliar >= 1 ? 3 : 2;
+  return {
+    nilai: Math.round(Math.max(0, Math.min(100, (syaratMin / kap) * 55))),
+    catatan: `${ind.penyedia.badan_usaha} · kualifikasi ${ind.penyedia.kualifikasi} untuk pagu Rp ${miliar.toFixed(2)} M`,
+  };
+}
+
+/**
+ * Risiko proyek kini bersumber dari penilaian scoring terbaru.
+ * Proyek tanpa scoring tidak dipaksa bernilai 0, melainkan "Belum dinilai".
+ */
 export function skorProyek(proyek) {
   const ind = hitungIndikator(proyek);
-  const d = [];
-
-  const butuh = angka(proyek.jumlah_tenaga);
-  const ckr = butuh ? ind.tkk_ditugaskan / butuh : 1;
-  const sKetenaga = butuh === 0 ? 15 : Math.round((1 - Math.min(1, ckr)) * 100);
-  d.push({
-    kode: 'KETENAGA',
-    label: 'Kesesuaian Tenaga Bersertifikat',
-    nilai: sKetenaga,
-    catatan: `${ind.tkk_ditugaskan}/${butuh} orang (CKR ${Math.round(Math.min(1, ckr) * 100)}%)`,
-  });
-
-  const m = String(proyek.metode_pengadaan || '').trim().toLowerCase();
-  let sMetode = 90;
-  if (m.includes('langsung')) sMetode = angka(proyek.pagu) > 5e8 ? 70 : 45;
-  else if (m.includes('tender') || m.includes('seleksi')) sMetode = 20;
-  else if (m.includes('dikecualikan')) sMetode = 75;
-  else if (m.includes('e-katalog') || m.includes('katalog')) sMetode = 30;
-  d.push({
-    kode: 'METODE',
-    label: 'Risiko Metode Pengadaan',
-    nilai: sMetode,
-    catatan: proyek.metode_pengadaan || 'Tidak Diisi',
-  });
-
-  let sKap = 55;
-  let catKap = 'Penyedia jasa belum ditugaskan';
-  if (ind.penyedia) {
-    const kap = Math.max(1, angka(ind.penyedia.skor_kemampuan));
-    const miliar = angka(proyek.pagu) / 1e9;
-    const syaratMin = miliar >= 3 ? 4 : miliar >= 1 ? 3 : 2;
-    sKap = Math.round(Math.max(0, Math.min(100, (syaratMin / kap) * 55)));
-    catKap = `${ind.penyedia.badan_usaha} · kualifikasi ${ind.penyedia.kualifikasi} untuk pagu Rp ${miliar.toFixed(2)} M`;
+  const scoring = ambilScoringTerbaru(proyek.id);
+  if (!scoring) {
+    return {
+      skor: null,
+      level: 'Belum dinilai',
+      warna: '#64748b',
+      aksi: 'Belum dilakukan penilaian scoring',
+      detail: [],
+      indikator: ind,
+      scoring: null,
+      dinilai: false,
+      kritis: 0,
+    };
   }
-  d.push({ kode: 'KAPASITAS', label: 'Kesesuaian Kapasitas Penyedia', nilai: sKap, catatan: catKap });
-
-  const deviasiAbs = Math.abs(ind.deviasi_progres);
-  const sProgres = proyek.status === 'Selesai' ? 5 : Math.round(Math.min(100, deviasiAbs * 2.2));
-  d.push({
-    kode: 'PROGRES',
-    label: 'Deviasi Progres Fisik',
-    nilai: sProgres,
-    catatan: `Rencana ${ind.progres_harapan}% · realisasi ${proyek.progres}% (${ind.deviasi_progres >= 0 ? '+' : ''}${ind.deviasi_progres}%)`,
-  });
-
-  const sTemuan = Math.round(
-    Math.min(100, ind.temuan_ekstrem * 40 + ind.temuan_tinggi * 20 + ind.temuan_terbuka * 7)
-  );
-  d.push({
-    kode: 'TEMUAN',
-    label: 'Beban Temuan Pengawasan',
-    nilai: sTemuan,
-    catatan: `${ind.temuan_terbuka} terbuka dari ${ind.temuan_total} (${ind.temuan_ekstrem} ekstrem, ${ind.temuan_tinggi} tinggi)`,
-  });
-
-  const sK3 = Math.round(Math.min(100, (ind.ada_k3 ? 0 : 65) + ind.k3_terbuka * 18));
-  d.push({
-    kode: 'K3',
-    label: 'Keselamatan & Kesehatan Kerja',
-    nilai: sK3,
-    catatan: ind.ada_k3 ? 'Tenaga K3 bersertifikat tersedia' : 'Belum ada tenaga K3 bersertifikat',
-  });
-
-  let sPeng = 30;
-  let catPeng = 'Belum ada riwayat supervisi lapangan';
-  if (ind.hari_terakhir_pengawasan !== null) {
-    const h = ind.hari_terakhir_pengawasan;
-    sPeng = h > 30 ? 90 : h > 14 ? 65 : h > 7 ? 40 : 15;
-    catPeng = `Supervisi terakhir ${h} hari lalu`;
-  }
-  d.push({ kode: 'PENGAWASAN', label: 'Frekuensi Supervisi Lapangan', nilai: sPeng, catatan: catPeng });
-
-  const totalBobot = Object.values(BOBOT).reduce((a, b) => a + b, 0);
-  const skor = Math.round(
-    Math.min(100, Math.max(0, d.reduce((a, x) => a + x.nilai * (BOBOT[x.kode] || 0), 0) / totalBobot))
-  );
-  const lv = levelDariSkor(skor);
-  return { skor, level: lv.level, warna: lv.warna, aksi: lv.aksi, detail: d, indikator: ind };
+  const k = klasifikasiScoring(scoring.nilai_akhir);
+  return {
+    skor: scoring.nilai_akhir,
+    level: scoring.kategori,
+    warna: k.warna,
+    aksi: scoring.rekomendasi || k.rekomendasi,
+    detail: scoring.detail,
+    indikator: ind,
+    scoring,
+    dinilai: true,
+    kritis: scoring.kritis,
+  };
 }
 
 // ============================================================ ATURAN EARLY WARNING
-const det = (s, kode) => s.detail.find((x) => x.kode === kode);
-
 export const ATURAN_EW = [
   {
     id: 'EW-01',
@@ -224,9 +176,12 @@ export const ATURAN_EW = [
   {
     id: 'EW-04',
     nama: 'Tenaga Kerja Belum Bersertifikat',
-    level: (p, s) => (det(s, 'KETENAGA').nilai >= 50 ? 'Tinggi' : 'Sedang'),
-    cek: (p, s) => angka(p.jumlah_tenaga) > 0 && det(s, 'KETENAGA').nilai > 0,
-    pesan: (p, s) => det(s, 'KETENAGA').catatan,
+    level: (p, s) => (s.indikator.tkk_ditugaskan / Math.max(1, angka(p.jumlah_tenaga)) < 0.5 ? 'Tinggi' : 'Sedang'),
+    cek: (p, s) => angka(p.jumlah_tenaga) > 0 && s.indikator.tkk_ditugaskan < angka(p.jumlah_tenaga),
+    pesan: (p, s) =>
+      `${s.indikator.tkk_ditugaskan}/${angka(p.jumlah_tenaga)} tenaga bersertifikat ditugaskan (CKR ${Math.round(
+        Math.min(1, s.indikator.tkk_ditugaskan / Math.max(1, angka(p.jumlah_tenaga))) * 100
+      )}%).`,
     mitigasi: 'Wajibkan penyedia menyertakan tenaga bersertifikat atau undertaking pelatihan pra-konstruksi.',
   },
   {
@@ -241,8 +196,8 @@ export const ATURAN_EW = [
     id: 'EW-06',
     nama: 'Kapasitas Penyedia Tidak Sebanding dengan Pagu',
     level: () => 'Tinggi',
-    cek: (p, s) => det(s, 'KAPASITAS').nilai >= 60,
-    pesan: (p, s) => det(s, 'KAPASITAS').catatan,
+    cek: (p, s) => kapasitasPenyedia(p, s.indikator).nilai >= 60,
+    pesan: (p, s) => kapasitasPenyedia(p, s.indikator).catatan,
     mitigasi: 'Evaluasi track record dan pertimbangkan pengawas independen tambahan.',
   },
   {
@@ -310,6 +265,17 @@ export const ATURAN_EW = [
     pesan: () => 'Terdapat keluhan masyarakat terkait proyek ini yang belum selesai ditangani.',
     mitigasi: 'Berikan respons cepat dan susun rencana tindak lanjut yang terukur.',
   },
+  {
+    id: 'EW-14',
+    nama: 'Skor Keselamatan Konstruksi Kritis',
+    level: () => 'Ekstrem',
+    cek: (p, s) => Boolean(s.scoring?.kritis),
+    pesan: (p, s) =>
+      `Penilaian ${s.scoring?.kode || 'scoring'} memberi skor 4 pada aspek keselamatan konstruksi ` +
+      `(nilai akhir ${s.scoring?.nilai_akhir ?? 0}).`,
+    mitigasi:
+      'Lakukan tindak lanjut segera tanpa menunggu nilai akhir: hentikan pekerjaan berisiko sampai temuan keselamatan ditutup.',
+  },
 ];
 
 export const ATURAN_AGGREGAT = [
@@ -371,11 +337,6 @@ export function metrik() {
   const pengTotal = satu('SELECT COUNT(*) n FROM pengawasan');
 
   const gapTotal = Math.max(0, kebTotal - tkk);
-  const level = db.prepare('SELECT level, COUNT(*) n FROM risiko GROUP BY level').all();
-  const perLevel = { Rendah: 0, Sedang: 0, Tinggi: 0, Ekstrem: 0 };
-  level.forEach((r) => {
-    perLevel[r.level] = angka(r.n);
-  });
 
   return {
     tkk: { total: tkk, operator: tkkOp, teknisi_analis: tkkTA },
@@ -405,51 +366,25 @@ export function metrik() {
       temuan_ekstrem: satu("SELECT COUNT(*) n FROM temuan WHERE tingkat='Ekstrem'"),
       catatan_supervisi: pengTotal,
     },
-    risiko: perLevel,
+    risiko: ringkasanRisiko(),
   };
 }
 
 // ============================================================ HITUNG ULANG
+/**
+ * Sinkronkan cache risiko dari penilaian scoring terbaru dan bangkitkan ulang
+ * peringatan early warning. Tidak lagi menghitung 7 indikator lama sebagai
+ * sumber risiko; indikator hanya dipakai oleh aturan peringatan.
+ */
 export function hitungUlang({ denganPeringatan = true } = {}) {
-  const proyek = db.prepare('SELECT * FROM proyek').all();
-  const up = db.prepare(
-    `INSERT INTO risiko(kode, proyek_id, kategori, deskripsi, probabilitas, dampak, skor, level, mitigasi, sumber)
-     VALUES(@kode, @proyek_id, @kategori, @deskripsi, @probabilitas, @dampak, @skor, @level, @mitigasi, 'DSS Engine')
-     ON CONFLICT(kode) DO UPDATE SET kategori=excluded.kategori, deskripsi=excluded.deskripsi,
-       probabilitas=excluded.probabilitas, dampak=excluded.dampak, skor=excluded.skor,
-       level=excluded.level, mitigasi=excluded.mitigasi`
-  );
-  let n = 0;
-  const tx = db.transaction(() => {
-    for (const p of proyek) {
-      const s = skorProyek(p);
-      const prob = Math.max(1, Math.min(5, Math.ceil(s.skor / 20)));
-      const damp = Math.max(1, Math.min(5, Math.ceil(angka(p.pagu) / 5e8)));
-      up.run({
-        kode: `RSK-${p.kode}`,
-        proyek_id: p.id,
-        kategori: s.level,
-        deskripsi:
-          s.detail
-            .filter((x) => x.nilai >= 40)
-            .map((x) => `${x.label}: ${x.catatan}`)
-            .join(' | ') || 'Seluruh indikator risiko berada dalam batas wajar.',
-        probabilitas: prob,
-        dampak: damp,
-        skor: prob * damp,
-        level: s.level,
-        mitigasi: s.detail
-          .filter((x) => x.nilai >= 50)
-          .map((x) => x.label)
-          .join('; ') || 'Pemantauan rutin',
-      });
-      n++;
-    }
-  });
-  tx();
+  const r = sinkronRisiko();
   const per = denganPeringatan ? regeneratePeringatan() : 0;
-  audit('dss-engine', 'hitung-ulang', 'risiko', null, { proyek: n, peringatan: per });
-  return { proyek: n, peringatan: per };
+  audit('dss-engine', 'hitung-ulang', 'risiko', null, {
+    proyek: r.proyek,
+    dinilai: r.dinilai,
+    peringatan: per,
+  });
+  return { proyek: r.proyek, dinilai: r.dinilai, belum_dinilai: r.belum_dinilai, peringatan: per };
 }
 
 function regeneratePeringatan() {

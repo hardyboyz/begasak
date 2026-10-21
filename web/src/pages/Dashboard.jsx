@@ -45,18 +45,25 @@ export default function Dashboard() {
   const per = data.peringatan;
   const target = meta?.ikk_target || 83.49;
 
-  const komposisiRisiko = ['Ekstrem', 'Tinggi', 'Sedang', 'Rendah']
+  const berisiko = (m.risiko.Tinggi || 0) + (m.risiko['Sangat tinggi'] || 0);
+  const komposisiRisiko = ['Sangat tinggi', 'Tinggi', 'Sedang', 'Rendah', 'Belum dinilai']
     .filter((l) => m.risiko[l] > 0)
     .map((l) => ({
       name: l,
       value: m.risiko[l],
-      color: { Ekstrem: '#b91c1c', Tinggi: '#ea580c', Sedang: '#ca8a04', Rendah: '#15803d' }[l],
+      color: {
+        'Sangat tinggi': '#b91c1c',
+        Tinggi: '#ea580c',
+        Sedang: '#ca8a04',
+        Rendah: '#15803d',
+        'Belum dinilai': '#64748b',
+      }[l],
     }));
 
   const statusProyek = data.statusProyek.map((s) => ({
     label: s.status,
     nilai: s.n,
-    color: { Berjalan: '#1447e1', Selesai: '#15803d', 'Belum Mulai': '#94a3b8' }[s.status] || '#94a3b8',
+    color: { Berjalan: '#fed104', Selesai: '#15803d', 'Belum Mulai': '#94a3b8' }[s.status] || '#94a3b8',
   }));
 
   const tren = data.trenPeringatan.map((t) => ({
@@ -124,9 +131,9 @@ export default function Dashboard() {
         />
         <Statistik
           label="Proyek Berisiko"
-          nilai={m.risiko.Tinggi + m.risiko.Ekstrem}
+          nilai={berisiko}
           satuan="proyek"
-          sub={`${m.risiko.Ekstrem} ekstrem · ${m.risiko.Tinggi} tinggi`}
+          sub={`${m.risiko['Sangat tinggi'] || 0} sangat tinggi · ${m.risiko.Tinggi || 0} tinggi`}
           ikon={<IkonRisiko className="w-5 h-5" />}
           tone="orange"
         />
@@ -227,12 +234,15 @@ export default function Dashboard() {
 
         {/* COMPOSISI RISIKO */}
         <Kartu>
-          <KartuJudul judul="Komposisi Tingkat Risiko Proyek" sub={`${m.proyek.total} proyek dinilai`} />
+          <KartuJudul
+            judul="Komposisi Tingkat Risiko Proyek"
+            sub={`${m.risiko.dinilai || 0} dinilai · ${m.risiko['Belum dinilai'] || 0} belum dinilai`}
+          />
           <div className="p-4">
             <GrafikDoughnut
               data={komposisiRisiko}
               tinggi={196}
-              centerLabel={`${m.risiko.Tinggi + m.risiko.Ekstrem}`}
+              centerLabel={berisiko}
               centerSub="proyek berisiko"
             />
             <div className="grid grid-cols-2 gap-2 mt-3">
@@ -311,10 +321,10 @@ export default function Dashboard() {
                   <XAxis dataKey="kecamatan" tick={{ fontSize: 10 }} angle={-18} textAnchor="end" height={54} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip {...TOOLTIP_STYLE} />
-                  <Bar dataKey="berjalan" name="Berjalan" stackId="a" fill="#1447e1" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="berjalan" name="Berjalan" stackId="a" fill="#fed104" radius={[0, 0, 0, 0]} />
                   <Bar
                     dataKey="berisiko"
-                    name="Berisiko (T/Ekstrem)"
+                    name="Berisiko (Tinggi+)"
                     stackId="b"
                     fill="#ea580c"
                     radius={[4, 4, 0, 0]}
@@ -447,7 +457,7 @@ export default function Dashboard() {
                   <p className="text-[12px] font-bold text-gov-700 shrink-0">{rupiahFmt(p.pagu, true)}</p>
                 </div>
                 <div className="mt-1.5">
-                  <ProgressBar nilai={p.progres} warna="#1447e1" tinggi={5} />
+                  <ProgressBar nilai={p.progres} warna="#fed104" tinggi={5} />
                 </div>
               </Link>
             ))}
